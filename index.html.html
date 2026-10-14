@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirCue Studio - Prompter & Estimador de Tiempo</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            studio: {
+              900: '#090d16',
+              800: '#111827',
+              700: '#1f2937',
+              accent: '#3b82f6',
+              neon: '#ccff00',
+              air: '#ef4444',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar for Studio Aesthetics */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #374151;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4b5563;
+    }
+
+    /* Teleprompter Mirroring Options */
+    .mirror-x {
+      transform: scaleX(-1);
+    }
+    .mirror-y {
+      transform: scaleY(-1);
+    }
+    .mirror-xy {
+      transform: scale(-1, -1);
+    }
+
+    /* Smooth prompter scroll overflow hidden */
+    #prompter-viewport {
+      scroll-behavior: auto;
+      user-select: none;
+    }
+
+    /* Target badge pulse */
+    @keyframes studio-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .pulse-air {
+      animation: studio-pulse 1.5s infinite ease-in-out;
+    }
+
+    /* Cue highlight styling inside prompter */
+    .cue-tag {
+      display: inline-block;
+      padding: 0.1em 0.4em;
+      border-radius: 0.25em;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 0.85em;
+      letter-spacing: 0.05em;
+      margin: 0 0.2em;
+      vertical-align: baseline;
+    }
+    .cue-pausa { background-color: #ef4444; color: #ffffff; }
+    .cue-aire { background-color: #3b82f6; color: #ffffff; }
+    .cue-efecto { background-color: #a855f7; color: #ffffff; }
+    .cue-enfasis { background-color: #eab308; color: #000000; }
+    .cue-generic { background-color: #64748b; color: #ffffff; }
+  </style>
+</head>
+<body class="h-full font-sans antialiased bg-slate-950 text-slate-100 flex flex-col overflow-x-hidden selection:bg-blue-600 selection:text-white">
+
+  <!-- TOP HEADER / STUDIO NAVBAR -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-30 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <!-- Logo & Status -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 font-bold text-xl">
+          <i class="ph-bold ph-broadcast"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-base tracking-tight text-white">AirCue <span class="text-blue-500 font-normal">Studio</span></h1>
+            <span class="text-[10px] uppercase tracking-wider bg-slate-800 text-slate-300 font-semibold px-2 py-0.5 rounded border border-slate-700">v2.4 PRO</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Prompter & Control de Tiempos para Locución y Broadcast</p>
+        </div>
+      </div>
+
+      <!-- Quick Preset Guiones -->
+      <div class="hidden md:flex items-center gap-2">
+        <span class="text-xs text-slate-400 font-medium mr-1"><i class="ph-bold ph-file-text mr-1"></i>Cargar Guion:</span>
+        <button onclick="loadPreset('spot30')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition">Spot 30s</button>
+        <button onclick="loadPreset('spot15')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition">Pauta 15s</button>
+        <button onclick="loadPreset('news')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition">Boletín Noticias</button>
+      </div>
+
+      <!-- Mode Selector & Action -->
+      <div class="flex items-center gap-2">
+        <button id="btn-mode-edit" onclick="switchView('edit')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-md shadow-blue-600/20 transition">
+          <i class="ph-bold ph-pencil-line"></i> Edición
+        </button>
+        <button id="btn-mode-prompter" onclick="switchView('prompter')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          <i class="ph-bold ph-play-circle"></i> Prompter <span class="hidden sm:inline text-[10px] opacity-60">(Espacio)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WRAPPER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
+
+    <!-- VIEW 1: EDITOR & DASHBOARD DE MÉTRICAS -->
+    <div id="view-editor" class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+
+      <!-- LEFT / MAIN: EDITOR DE GUION -->
+      <div class="lg:col-span-8 flex flex-col gap-4">
+        
+        <!-- Toolbar for Editor -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Anotaciones rápidas:</span>
+            <button onclick="insertCue('[PAUSA]')" class="px-2 py-0.5 text-xs bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/60 rounded font-bold transition">+ [PAUSA]</button>
+            <button onclick="insertCue('[TOMA AIRE]')" class="px-2 py-0.5 text-xs bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-800/60 rounded font-bold transition">+ [TOMA AIRE]</button>
+            <button onclick="insertCue('[ÉNFASIS]')" class="px-2 py-0.5 text-xs bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/60 rounded font-bold transition">+ [ÉNFASIS]</button>
+            <button onclick="insertCue('[EFECTO]')" class="px-2 py-0.5 text-xs bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800/60 rounded font-bold transition">+ [EFECTO]</button>
+          </div>
+
+          <div class="flex items-center gap-2 ml-auto">
+            <button onclick="clearScript()" class="text-xs text-slate-400 hover:text-red-400 p-1.5 rounded hover:bg-slate-800 transition" title="Limpiar borrador">
+              <i class="ph-bold ph-trash text-base"></i>
+            </button>
+            <button onclick="copyScript()" class="text-xs text-slate-400 hover:text-white p-1.5 rounded hover:bg-slate-800 transition" title="Copiar texto">
+              <i class="ph-bold ph-copy text-base"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Textarea with Word Counter -->
+        <div class="relative flex-1 min-h-[380px] md:min-h-[460px] flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-inner focus-within:border-blue-500/60 focus-within:ring-1 focus-within:ring-blue-500/50 transition-all">
+          <textarea id="script-input" class="w-full h-full p-5 bg-transparent text-slate-100 text-base md:text-lg font-sans leading-relaxed focus:outline-none resize-none placeholder-slate-600" placeholder="Escribe o pega aquí el guion de locución comercial, noticia o locución institucional..." oninput="updateMetrics()"></textarea>
+          
+          <!-- Bottom Status inside Editor -->
+          <div class="border-t border-slate-800/80 bg-slate-950/50 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400 font-mono">
+            <div class="flex items-center gap-4">
+              <span><strong id="stat-words" class="text-slate-200">0</strong> palabras</span>
+              <span><strong id="stat-chars" class="text-slate-200">0</strong> caracteres</span>
+              <span><strong id="stat-cues" class="text-slate-200">0</strong> acotaciones</span>
+            </div>
+            <div class="flex items-center gap-1 text-slate-500 text-[11px]">
+              <i class="ph-bold ph-info"></i> Usar corchetes [ ] para marcar cues
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT / SIDEBAR: ESTIMACIÓN Y CONFIGURACIÓN DE RITMO -->
+      <div class="lg:col-span-4 flex flex-col gap-5">
+        
+        <!-- CARD 1: TIEMPO ESTIMADO & RITMO PPM -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <i class="ph-bold ph-timer text-blue-400 text-lg"></i> Tiempo Estimado
+            </h2>
+            <span class="text-xs bg-blue-500/10 text-blue-400 font-mono font-semibold px-2 py-0.5 rounded border border-blue-500/20">Calculado en vivo</span>
+          </div>
+
+          <!-- Total Duration Display -->
+          <div class="bg-slate-950 border border-slate-800/80 rounded-xl p-4 text-center">
+            <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Duración Aproximada</div>
+            <div id="stat-duration" class="text-4xl md:text-5xl font-extrabold font-mono text-white tracking-tight">00:00.0</div>
+            <div id="stat-duration-seconds" class="text-xs text-blue-400 font-mono font-medium mt-1">0.0 segundos totales</div>
+          </div>
+
+          <!-- Selector de Ritmo PPM (Palabras Por Minuto) -->
+          <div class="space-y-3">
+            <div class="flex justify-between items-center text-xs">
+              <label class="font-semibold text-slate-300">Ritmo de Lectura (PPM):</label>
+              <span id="ppm-val-display" class="font-mono font-bold text-blue-400 text-sm bg-slate-800 px-2 py-0.5 rounded">140 PPM</span>
+            </div>
+
+            <!-- PPM Slider -->
+            <input type="range" id="ppm-slider" min="100" max="220" step="5" value="140" oninput="onPpmSliderChange(this.value)" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+
+            <!-- PPM Presets Buttons -->
+            <div class="grid grid-cols-3 gap-1.5 pt-1">
+              <button onclick="setPpm(130)" id="preset-130" class="ppm-preset-btn px-2 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-center transition">
+                <div class="font-semibold">Institucional</div>
+                <div class="text-[10px] text-slate-400 font-mono">130 PPM</div>
+              </button>
+              <button onclick="setPpm(140)" id="preset-140" class="ppm-preset-btn px-2 py-1.5 text-xs rounded-lg bg-blue-600 border border-blue-500 text-white text-center transition font-bold shadow-sm">
+                <div class="font-semibold">Informativo</div>
+                <div class="text-[10px] text-blue-200 font-mono">140 PPM</div>
+              </button>
+              <button onclick="setPpm(165)" id="preset-165" class="ppm-preset-btn px-2 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-center transition">
+                <div class="font-semibold">Comercial</div>
+                <div class="text-[10px] text-slate-400 font-mono">165 PPM</div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CARD 2: PAUTA EXIGIDA (TARGET TIME FITTER) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <i class="ph-bold ph-target text-amber-400 text-lg"></i> Pauta Exigida (Target)
+            </h2>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="target-toggle" class="sr-only peer" onchange="toggleTargetMode()">
+              <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+            </label>
+          </div>
+
+          <!-- Target Controls (Visible when active) -->
+          <div id="target-controls" class="space-y-3 opacity-50 pointer-events-none transition-all">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400">Duración objetivo:</span>
+              <div class="flex items-center gap-1.5 flex-1">
+                <input type="number" id="target-seconds" min="5" max="300" value="30" oninput="updateMetrics()" class="w-20 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-mono font-bold text-center text-amber-400 focus:outline-none focus:border-amber-500">
+                <span class="text-xs font-semibold text-slate-300">segundos</span>
+              </div>
+            </div>
+
+            <!-- Preset Target Times -->
+            <div class="flex items-center gap-1.5">
+              <button onclick="setTargetTime(15)" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">15s</button>
+              <button onclick="setTargetTime(20)" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">20s</button>
+              <button onclick="setTargetTime(30)" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">30s</button>
+              <button onclick="setTargetTime(60)" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">60s</button>
+            </div>
+
+            <!-- Target Status Feedback Panel -->
+            <div id="target-feedback" class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5">
+              <div id="target-status-badge" class="font-bold flex items-center gap-1.5 text-slate-400">
+                <i class="ph-bold ph-minus-circle"></i> Activa el modo pauta para evaluar.
+              </div>
+              <p id="target-recommendation" class="text-slate-400 leading-normal">El tiempo objetivo te ayudará a encajar comerciales de radio/TV con exactitud.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- QUICK PROMPTER LAUNCH BUTTON -->
+        <button onclick="switchView('prompter')" class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 text-sm transition transform active:scale-[0.99]">
+          <i class="ph-bold ph-play-circle text-xl"></i> INICIAR TELEPROMPTER
+        </button>
+
+      </div>
+    </div>
+
+    <!-- VIEW 2: MODO PROMPTER / ESTUDIO EN VIVO -->
+    <div id="view-prompter" class="hidden flex-1 flex-col bg-black rounded-2xl border border-slate-800 overflow-hidden relative min-h-[550px] shadow-2xl">
+      
+      <!-- PROMPTER TOP FLOATING TOOLBAR -->
+      <div id="prompter-toolbar" class="absolute top-0 left-0 right-0 z-20 bg-slate-950/90 backdrop-blur border-b border-slate-800/80 p-3 flex flex-wrap items-center justify-between gap-3 transition-opacity duration-300">
+        
+        <!-- Left Controls: Play / Stop / Progress -->
+        <div class="flex items-center gap-2">
+          <button id="btn-prompter-play" onclick="togglePrompterPlay()" class="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm flex items-center gap-1.5 shadow-md transition">
+            <i id="icon-prompter-play" class="ph-bold ph-play text-lg"></i>
+            <span id="label-prompter-play" class="hidden sm:inline">Iniciar</span>
+          </button>
+          
+          <button onclick="resetPrompterScroll()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Reiniciar al inicio (Esc)">
+            <i class="ph-bold ph-arrows-counter-clockwise text-lg"></i>
+          </button>
+
+          <!-- Timer Elapsed -->
+          <div class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 font-mono text-xs flex items-center gap-2">
+            <span class="text-slate-500">TIEMPO:</span>
+            <span id="prompter-timer" class="font-bold text-amber-400">00:00.0</span>
+          </div>
+        </div>
+
+        <!-- Center Controls: Dynamic Speed Slider & Font Size -->
+        <div class="flex items-center gap-4 flex-wrap">
+          <!-- Scroll Speed -->
+          <div class="flex items-center gap-2">
+            <i class="ph-bold ph-gauge text-slate-400 text-sm"></i>
+            <span class="text-xs text-slate-400 hidden md:inline">Velocidad:</span>
+            <input type="range" id="prompter-speed-slider" min="1" max="10" step="0.5" value="3" oninput="updateScrollSpeedFromSlider(this.value)" class="w-20 md:w-28 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+            <span id="prompter-speed-num" class="text-xs font-mono text-blue-400 font-bold w-6">3x</span>
+          </div>
+
+          <!-- Font Size Slider -->
+          <div class="flex items-center gap-2 border-l border-slate-800 pl-4">
+            <i class="ph-bold ph-text-aa text-slate-400 text-sm"></i>
+            <input type="range" id="font-size-slider" min="24" max="72" step="2" value="44" oninput="changeFontSize(this.value)" class="w-16 md:w-24 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+            <span id="font-size-num" class="text-xs font-mono text-slate-300 w-8">44px</span>
+          </div>
+        </div>
+
+        <!-- Right Controls: Display Optics & Exit -->
+        <div class="flex items-center gap-2">
+          
+          <!-- Mirror Toggle -->
+          <button id="btn-mirror-x" onclick="toggleMirror('x')" class="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs flex items-center gap-1 transition" title="Modo Espejo Horizontal (Vidrio Teleprompter)">
+            <i class="ph-bold ph-arrows-out-line-horizontal text-base"></i>
+            <span class="hidden xl:inline">Espejo H</span>
+          </button>
+
+          <!-- Visual Theme Selector -->
+          <select id="theme-selector" onchange="changePrompterTheme(this.value)" class="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-2 focus:outline-none">
+            <option value="theme-dark">Fondo Negro / Texto Blanco</option>
+            <option value="theme-neon">Fondo Negro / Amarillo Neón</option>
+            <option value="theme-matrix">Fondo Negro / Verde Matrix</option>
+            <option value="theme-light">Fondo Blanco / Texto Negro</option>
+          </select>
+
+          <!-- Toggle Guide Line -->
+          <button id="btn-toggle-guide" onclick="toggleReadingGuide()" class="p-2 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs transition" title="Guía de lectura activa">
+            <i class="ph-bold ph-[#ph-rows] ph-rows text-base"></i>
+          </button>
+
+          <!-- Exit Prompter View -->
+          <button onclick="switchView('edit')" class="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs flex items-center gap-1 transition ml-2">
+            <i class="ph-bold ph-x text-base"></i> Salir
+          </button>
+        </div>
+
+      </div>
+
+      <!-- CENTER FOCUS READING GUIDE OVERLAY -->
+      <div id="prompter-reading-guide" class="absolute top-1/2 left-0 right-0 transform -translate-y-1/2 pointer-events-none z-10 h-28 border-y-2 border-red-500/40 bg-red-500/[0.03] flex items-center justify-between px-4">
+        <div class="w-3 h-3 border-t-2 border-l-2 border-red-500"></div>
+        <div class="w-3 h-3 border-t-2 border-r-2 border-red-500"></div>
+      </div>
+
+      <!-- READING VIEWPORT (SCROLL AREA) -->
+      <div id="prompter-viewport" class="w-full h-full overflow-y-auto px-8 md:px-20 lg:px-32 pt-48 pb-96 transition-colors duration-200">
+        <div id="prompter-content-box" class="max-w-5xl mx-auto transition-transform duration-100">
+          <div id="prompter-text-display" class="font-sans font-bold leading-relaxed whitespace-pre-wrap break-words text-white">
+            <!-- Dynamic Parsed Prompter Content inserted here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM CONTROL BAR FOR TOUCH/REMOTE HELPER -->
+      <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20 bg-slate-900/80 backdrop-blur border border-slate-800/80 px-4 py-2 rounded-full flex items-center gap-4 text-xs text-slate-400 shadow-xl pointer-events-none opacity-70 hover:opacity-100 transition-opacity">
+        <span><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">Espacio</kbd> Play/Pausa</span>
+        <span><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">↑ / ↓</kbd> Velocidad</span>
+        <span><kbd class="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded border border-slate-700">Esc</kbd> Reset/Salir</span>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-slate-900 bg-slate-950 py-3 px-4 text-center text-xs text-slate-600">
+    <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
+      <div>AirCue Studio Teleprompter &copy; 2026 - Optimizado para Radio, TV y Locución Comercial</div>
+      <div id="wake-lock-status" class="flex items-center gap-1.5 text-slate-500">
+        <i class="ph-bold ph-shield-check text-green-500"></i> Pantalla Activa (WakeLock listo)
+      </div>
+    </div>
+  </footer>
+
+  <!-- APPLICATION LOGIC & MOTOR -->
+  <script>
+    // --- PRESET SCRIPTS DATA ---
+    const PRESET_SCRIPTS = {
+      spot30: `[TOMA AIRE]
+¡Atención amantes del buen café! [ÉNFASIS]
+
+Llegó a la ciudad Espresso Real, el sabor artesanal que despierta tus mañanas. Disfruta de granos seleccionados cien por ciento orgánicos, tostados diariamente para ofrecerte el aroma y la frescura que mereces. [PAUSA]
+
+Visítanos en nuestra nueva sede del centro o pide tu combinación favorita a través de nuestra aplicación oficial. [PAUSA]
+
+Espresso Real: Pasión en cada gota. [EFECTO] Promoción válida hasta agotar existencias.`,
+      
+      spot15: `[TOMA AIRE]
+¿Tu internet te frena? [ÉNFASIS]
+
+Cámbiate hoy mismo a Fibra Max y navega a un gigabit de velocidad real. [PAUSA]
+
+Sin caídas, sin interrupciones y con instalación completamente gratis. Llama ya al 0800-FIBRA y activa tu plan comercial. Fibra Max: Conecta tu mundo.`,
+
+      news: `[TOMA AIRE]
+Boletín informativo de última hora. [PAUSA]
+
+El centro nacional de meteorología confirma que el frente frío ingresará al territorio durante las primeras horas de la noche. Se recomiendan precauciones en zonas costeras por rachas de viento moderado. [PAUSA]
+
+Por otra parte, la bolsa local abre la jornada con una tendencia al alza del uno punto dos por ciento impulsada por el sector energético. [EFECTO]
+
+Siga en sintonía de nuestro próximo avance informativo en treinta minutos.`
+    };
+
+    // --- STATE MANAGEMENT ---
+    const state = {
+      scriptText: '',
+      wordsCount: 0,
+      charsCount: 0,
+      cuesCount: 0,
+      ppm: 140,
+      estimatedSeconds: 0,
+      
+      // Target Mode
+      isTargetActive: false,
+      targetSeconds: 30,
+
+      // Prompter Engine
+      currentView: 'edit', // 'edit' | 'prompter'
+      isPlaying: false,
+      scrollSpeed: 3, // Range 1 - 10
+      fontSize: 44,
+      mirrorX: false,
+      mirrorY: false,
+      showGuide: true,
+      prompterTheme: 'theme-dark',
+
+      // Timing & Animation
+      animationFrameId: null,
+      prompterStartTime: 0,
+      elapsedSeconds: 0,
+      timerInterval: null,
+      
+      // Screen Lock
+      wakeLock: null
+    };
+
+    // --- DOM ELEMENTS REFERENCES ---
+    const scriptInput = document.getElementById('script-input');
+    const statWords = document.getElementById('stat-words');
+    const statChars = document.getElementById('stat-chars');
+    const statCues = document.getElementById('stat-cues');
+    const statDuration = document.getElementById('stat-duration');
+    const statDurationSeconds = document.getElementById('stat-duration-seconds');
+    
+    const ppmSlider = document.getElementById('ppm-slider');
+    const ppmValDisplay = document.getElementById('ppm-val-display');
+    
+    const targetToggle = document.getElementById('target-toggle');
+    const targetControls = document.getElementById('target-controls');
+    const targetSecondsInput = document.getElementById('target-seconds');
+    const targetStatusBadge = document.getElementById('target-status-badge');
+    const targetRecommendation = document.getElementById('target-recommendation');
+
+    const viewEditor = document.getElementById('view-editor');
+    const viewPrompter = document.getElementById('view-prompter');
+    const btnModeEdit = document.getElementById('btn-mode-edit');
+    const btnModePrompter = document.getElementById('btn-mode-prompter');
+
+    const prompterViewport = document.getElementById('prompter-viewport');
+    const prompterContentBox = document.getElementById('prompter-content-box');
+    const prompterTextDisplay = document.getElementById('prompter-text-display');
+    const prompterTimer = document.getElementById('prompter-timer');
+    const prompterSpeedSlider = document.getElementById('prompter-speed-slider');
+    const prompterSpeedNum = document.getElementById('prompter-speed-num');
+    const fontSizeSlider = document.getElementById('font-size-slider');
+    const fontSizeNum = document.getElementById('font-size-num');
+    const prompterReadingGuide = document.getElementById('prompter-reading-guide');
+
+    // --- INITIALIZATION ---
+    window.addEventListener('DOMContentLoaded', () => {
+      // Load initial script
+      scriptInput.value = PRESET_SCRIPTS.spot30;
+      updateMetrics();
+
+      // Keyboard listeners
+      window.addEventListener('keydown', handleGlobalKeydown);
+
+      // Request wake lock capability if available
+      initWakeLock();
+    });
+
+    // --- METRICS & CALCULATIONS ---
+    function updateMetrics() {
+      state.scriptText = scriptInput.value;
+      
+      // Clean script text for word counting (exclude standalone cue markers if desired or keep clean)
+      const cleanText = state.scriptText.replace(/\[.*?\]/g, ' ');
+      const words = cleanText.trim().split(/\s+/).filter(w => w.length > 0);
+      
+      state.wordsCount = words.length;
+      state.charsCount = state.scriptText.length;
+      
+      // Count Cues
+      const cueMatches = state.scriptText.match(/\[.*?\]/g);
+      state.cuesCount = cueMatches ? cueMatches.length : 0;
+
+      // Calculate Estimated Time
+      // Minutes = Words / PPM
+      const minutes = state.wordsCount / state.ppm;
+      state.estimatedSeconds = minutes * 60;
+
+      // Update Editor Stats UI
+      statWords.textContent = state.wordsCount;
+      statChars.textContent = state.charsCount;
+      statCues.textContent = state.cuesCount;
+
+      // Format Minutes & Seconds
+      statDuration.textContent = formatTime(state.estimatedSeconds);
+      statDurationSeconds.textContent = `${state.estimatedSeconds.toFixed(1)} segundos totales`;
+
+      // Update Target Time evaluation if active
+      evaluateTargetFit();
+    }
+
+    function setPpm(newPpm) {
+      state.ppm = parseInt(newPpm);
+      ppmSlider.value = state.ppm;
+      ppmValDisplay.textContent = `${state.ppm} PPM`;
+
+      // Update preset buttons styles
+      document.querySelectorAll('.ppm-preset-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-500', 'shadow-sm');
+        btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+      });
+
+      const activeBtn = document.getElementById(`preset-${state.ppm}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+        activeBtn.classList.add('bg-blue-600', 'text-white', 'border-blue-500', 'shadow-sm');
+      }
+
+      // Sync scroll speed with PPM proportionally
+      // 140 PPM maps to baseline scroll speed 3.0
+      state.scrollSpeed = parseFloat((state.ppm / 45).toFixed(1));
+      prompterSpeedSlider.value = state.scrollSpeed;
+      prompterSpeedNum.textContent = `${state.scrollSpeed}x`;
+
+      updateMetrics();
+    }
+
+    function onPpmSliderChange(val) {
+      setPpm(val);
+    }
+
+    // --- TARGET PAUTA MODE LOGIC ---
+    function toggleTargetMode() {
+      state.isTargetActive = targetToggle.checked;
+      if (state.isTargetActive) {
+        targetControls.classList.remove('opacity-50', 'pointer-events-none');
+      } else {
+        targetControls.classList.add('opacity-50', 'pointer-events-none');
+      }
+      evaluateTargetFit();
+    }
+
+    function setTargetTime(seconds) {
+      state.targetSeconds = seconds;
+      targetSecondsInput.value = seconds;
+      if (!state.isTargetActive) {
+        targetToggle.checked = true;
+        toggleTargetMode();
+      } else {
+        evaluateTargetFit();
+      }
+    }
+
+    function evaluateTargetFit() {
+      if (!state.isTargetActive) {
+        targetStatusBadge.className = 'font-bold flex items-center gap-1.5 text-slate-400';
+        targetStatusBadge.innerHTML = `<i class="ph-bold ph-minus-circle"></i> Activa el modo pauta para evaluar.`;
+        targetRecommendation.textContent = 'El tiempo objetivo te ayudará a encajar comerciales de radio/TV con exactitud.';
+        return;
+      }
+
+      const targetSec = parseFloat(targetSecondsInput.value) || 30;
+      state.targetSeconds = targetSec;
+
+      const diff = state.estimatedSeconds - targetSec;
+      const margin = 1.5; // Acceptable tolerance in seconds
+
+      // Required PPM to fit exact word count into target seconds
+      const requiredPpm = Math.round((state.wordsCount / (targetSec / 60)) || 0);
+
+      if (Math.abs(diff) <= margin) {
+        // EN TIEMPO
+        targetStatusBadge.className = 'font-bold flex items-center gap-1.5 text-emerald-400';
+        targetStatusBadge.innerHTML = `<i class="ph-bold ph-check-circle text-lg"></i> ¡EN TIEMPO PERFECTO! (±${margin}s)`;
+        targetRecommendation.innerHTML = `Tu guion se ajusta a la pauta de <strong>${targetSec}s</strong> leyendo a un ritmo estándar de <strong>${state.ppm} PPM</strong>.`;
+      } else if (diff > margin) {
+        // EXCEDIDO (MUY LARGO)
+        const wordsToRemove = Math.ceil((diff / 60) * state.ppm);
+        targetStatusBadge.className = 'font-bold flex items-center gap-1.5 text-red-400';
+        targetStatusBadge.innerHTML = `<i class="ph-bold ph-warning-circle text-lg"></i> GUION EXCEDIDO por ${diff.toFixed(1)}s`;
+        targetRecommendation.innerHTML = `Debes <strong>recortar ~${wordsToRemove} palabras</strong> para cumplir la pauta de ${targetSec}s o acelerar la locución a <strong>${requiredPpm} PPM</strong> (Ritmo rápido).`;
+      } else {
+        // CORTO (FALTA TIEMPO)
+        const wordsToAdd = Math.ceil((Math.abs(diff) / 60) * state.ppm);
+        targetStatusBadge.className = 'font-bold flex items-center gap-1.5 text-amber-400';
+        targetStatusBadge.innerHTML = `<i class="ph-bold ph-info text-lg"></i> GUION CORTO por ${Math.abs(diff).toFixed(1)}s`;
+        targetRecommendation.innerHTML = `Puedes <strong>agregar ~${wordsToAdd} palabras</strong> adicionales o reducir el ritmo de lectura a <strong>${requiredPpm} PPM</strong> (Ritmo pausado).`;
+      }
+    }
+
+    // --- SCRIPT EDITOR HELPERS ---
+    function insertCue(cueTag) {
+      const start = scriptInput.selectionStart;
+      const end = scriptInput.selectionEnd;
+      const text = scriptInput.value;
+      const replacement = ` ${cueTag} `;
+      scriptInput.value = text.substring(0, start) + replacement + text.substring(end);
+      scriptInput.focus();
+      scriptInput.selectionStart = scriptInput.selectionEnd = start + replacement.length;
+      updateMetrics();
+    }
+
+    function clearScript() {
+      if (confirm('¿Deseas borrar todo el contenido del guion?')) {
+        scriptInput.value = '';
+        updateMetrics();
+      }
+    }
+
+    function copyScript() {
+      document.execCommand('copy');
+      // Copy explicitly from textarea using selection fallback
+      scriptInput.select();
+      document.execCommand('copy');
+      alert('Guion copiado al portapapeles');
+    }
+
+    function loadPreset(key) {
+      if (PRESET_SCRIPTS[key]) {
+        scriptInput.value = PRESET_SCRIPTS[key];
+        updateMetrics();
+      }
+    }
+
+    // --- PROMPTER PARSER & PARSING VISUAL CUES ---
+    function preparePrompterText() {
+      const rawText = scriptInput.value;
+      if (!rawText.trim()) {
+        prompterTextDisplay.innerHTML = `<div class="text-slate-600 italic text-center py-20">[ El guion está vacío. Escribe algo en el modo Edición ]</div>`;
+        return;
+      }
+
+      // Escape HTML
+      let escaped = rawText
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      // Replace Cues with Styled HTML Badges
+      const parsedHTML = escaped.replace(/\[(.*?)\]/g, (match, p1) => {
+        const uppercaseCue = p1.toUpperCase().trim();
+        let cueClass = 'cue-generic';
+        if (uppercaseCue.includes('PAUSA')) cueClass = 'cue-pausa';
+        else if (uppercaseCue.includes('AIRE') || uppercaseCue.includes('TOMA')) cueClass = 'cue-aire';
+        else if (uppercaseCue.includes('EFECTO')) cueClass = 'cue-efecto';
+        else if (uppercaseCue.includes('ÉNFASIS') || uppercaseCue.includes('ENFASIS')) cueClass = 'cue-enfasis';
+
+        return `<span class="cue-tag ${cueClass}">[${uppercaseCue}]</span>`;
+      });
+
+      prompterTextDisplay.innerHTML = parsedHTML;
+    }
+
+    // --- VIEW SWITCHING ---
+    function switchView(view) {
+      state.currentView = view;
+      if (view === 'edit') {
+        pausePrompter();
+        viewPrompter.classList.add('hidden');
+        viewEditor.classList.remove('hidden');
+        
+        btnModeEdit.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-md shadow-blue-600/20 transition";
+        btnModePrompter.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition";
+      } else {
+        preparePrompterText();
+        viewEditor.classList.add('hidden');
+        viewPrompter.classList.remove('hidden');
+        viewPrompter.classList.add('flex');
+
+        btnModePrompter.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-md shadow-blue-600/20 transition";
+        btnModeEdit.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition";
+
+        // Scroll to top
+        resetPrompterScroll();
+      }
+    }
+
+    // --- PROMPTER MOTOR & ANIMATION LOOP ---
+    function togglePrompterPlay() {
+      if (state.isPlaying) {
+        pausePrompter();
+      } else {
+        startPrompter();
+      }
+    }
+
+    function startPrompter() {
+      if (state.isPlaying) return;
+      state.isPlaying = true;
+
+      // Update UI buttons
+      document.getElementById('icon-prompter-play').className = "ph-bold ph-pause text-lg";
+      document.getElementById('label-prompter-play').textContent = "Pausar";
+      document.getElementById('btn-prompter-play').classList.replace('bg-blue-600', 'bg-amber-600');
+      document.getElementById('btn-prompter-play').classList.replace('hover:bg-blue-500', 'hover:bg-amber-500');
+
+      // Start elapsed timer
+      state.prompterStartTime = Date.now() - (state.elapsedSeconds * 1000);
+      state.timerInterval = setInterval(updatePrompterTimer, 100);
+
+      // Start Smooth Scroll RequestAnimationFrame Loop
+      requestAnimationFrame(scrollLoop);
+    }
+
+    function pausePrompter() {
+      state.isPlaying = false;
+      if (state.animationFrameId) {
+        cancelAnimationFrame(state.animationFrameId);
+      }
+      if (state.timerInterval) {
+        clearInterval(state.timerInterval);
+      }
+
+      // Update UI buttons
+      const playIcon = document.getElementById('icon-prompter-play');
+      const playLabel = document.getElementById('label-prompter-play');
+      const playBtn = document.getElementById('btn-prompter-play');
+
+      if (playIcon && playLabel && playBtn) {
+        playIcon.className = "ph-bold ph-play text-lg";
+        playLabel.textContent = "Continuar";
+        playBtn.classList.replace('bg-amber-600', 'bg-blue-600');
+        playBtn.classList.replace('hover:bg-amber-500', 'hover:bg-blue-500');
+      }
+    }
+
+    function resetPrompterScroll() {
+      pausePrompter();
+      prompterViewport.scrollTop = 0;
+      state.elapsedSeconds = 0;
+      prompterTimer.textContent = "00:00.0";
+    }
+
+    function scrollLoop() {
+      if (!state.isPlaying) return;
+
+      // Increment scroll position based on scrollSpeed factor
+      const pixelsPerFrame = state.scrollSpeed * 0.75;
+      prompterViewport.scrollTop += pixelsPerFrame;
+
+      // Check if reached bottom
+      if (prompterViewport.scrollTop + prompterViewport.clientHeight >= prompterViewport.scrollHeight - 20) {
+        pausePrompter();
+        return;
+      }
+
+      state.animationFrameId = requestAnimationFrame(scrollLoop);
+    }
+
+    function updatePrompterTimer() {
+      if (!state.isPlaying) return;
+      state.elapsedSeconds = (Date.now() - state.prompterStartTime) / 1000;
+      prompterTimer.textContent = formatTime(state.elapsedSeconds);
+    }
+
+    // --- CONTROLS & APPEARANCE ---
+    function updateScrollSpeedFromSlider(val) {
+      state.scrollSpeed = parseFloat(val);
+      prompterSpeedNum.textContent = `${state.scrollSpeed}x`;
+    }
+
+    function changeFontSize(val) {
+      state.fontSize = parseInt(val);
+      fontSizeNum.textContent = `${state.fontSize}px`;
+      prompterTextDisplay.style.fontSize = `${state.fontSize}px`;
+      prompterTextDisplay.style.lineHeight = `1.6`;
+    }
+
+    function toggleMirror(axis) {
+      if (axis === 'x') state.mirrorX = !state.mirrorX;
+      if (axis === 'y') state.mirrorY = !state.mirrorY;
+
+      // Update styling
+      let transformClasses = [];
+      if (state.mirrorX && state.mirrorY) transformClasses.push('mirror-xy');
+      else if (state.mirrorX) transformClasses.push('mirror-x');
+      else if (state.mirrorY) transformClasses.push('mirror-y');
+
+      prompterContentBox.className = `max-w-5xl mx-auto transition-transform duration-100 ${transformClasses.join(' ')}`;
+
+      // Highlight mirror button
+      const mirrorBtn = document.getElementById('btn-mirror-x');
+      if (state.mirrorX) {
+        mirrorBtn.classList.add('bg-blue-600', 'text-white');
+      } else {
+        mirrorBtn.classList.remove('bg-blue-600', 'text-white');
+      }
+    }
+
+    function changePrompterTheme(themeKey) {
+      state.prompterTheme = themeKey;
+      prompterViewport.classList.remove('bg-black', 'bg-white', 'text-white', 'text-yellow-300', 'text-emerald-400', 'text-black');
+
+      if (themeKey === 'theme-dark') {
+        prompterViewport.classList.add('bg-black');
+        prompterTextDisplay.className = "font-sans font-bold leading-relaxed whitespace-pre-wrap break-words text-white";
+      } else if (themeKey === 'theme-neon') {
+        prompterViewport.classList.add('bg-black');
+        prompterTextDisplay.className = "font-sans font-bold leading-relaxed whitespace-pre-wrap break-words text-yellow-300";
+      } else if (themeKey === 'theme-matrix') {
+        prompterViewport.classList.add('bg-black');
+        prompterTextDisplay.className = "font-mono font-bold leading-relaxed whitespace-pre-wrap break-words text-emerald-400";
+      } else if (themeKey === 'theme-light') {
+        prompterViewport.classList.add('bg-white');
+        prompterTextDisplay.className = "font-sans font-bold leading-relaxed whitespace-pre-wrap break-words text-black";
+      }
+    }
+
+    function toggleReadingGuide() {
+      state.showGuide = !state.showGuide;
+      const guideBtn = document.getElementById('btn-toggle-guide');
+      if (state.showGuide) {
+        prompterReadingGuide.classList.remove('hidden');
+        guideBtn.classList.add('bg-blue-600/20', 'text-blue-400');
+      } else {
+        prompterReadingGuide.classList.add('hidden');
+        guideBtn.classList.remove('bg-blue-600/20', 'text-blue-400');
+      }
+    }
+
+    // --- KEYBOARD CONTROLS ---
+    function handleGlobalKeydown(e) {
+      // Don't intercept shortcuts when typing in inputs
+      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (state.currentView === 'edit') {
+          switchView('prompter');
+          startPrompter();
+        } else {
+          togglePrompterPlay();
+        }
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        const newSpeed = Math.min(10, state.scrollSpeed + 0.5);
+        prompterSpeedSlider.value = newSpeed;
+        updateScrollSpeedFromSlider(newSpeed);
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        const newSpeed = Math.max(1, state.scrollSpeed - 0.5);
+        prompterSpeedSlider.value = newSpeed;
+        updateScrollSpeedFromSlider(newSpeed);
+      } else if (e.code === 'KeyM') {
+        toggleMirror('x');
+      } else if (e.code === 'Escape') {
+        if (state.currentView === 'prompter') {
+          switchView('edit');
+        }
+      }
+    }
+
+    // --- HELPER UTILITIES ---
+    function formatTime(totalSeconds) {
+      if (isNaN(totalSeconds) || totalSeconds < 0) return "00:00.0";
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = Math.floor(totalSeconds % 60);
+      const tenths = Math.floor((totalSeconds % 1) * 10);
+      
+      const mm = String(mins).padStart(2, '0');
+      const ss = String(secs).padStart(2, '0');
+      return `${mm}:${ss}.${tenths}`;
+    }
+
+    // Wake Lock API to prevent screen sleep during prompter mode
+    async function initWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          state.wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.warn('Wake Lock error:', err.message);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
